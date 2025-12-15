@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 沟通教练 Pro</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
+    
+    <style>
+        /* --- 基础样式 --- */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
+        
+        /* 顶部导航 */
+        header { background: #fff; padding: 15px; text-align: center; border-bottom: 1px solid #e1e4e8; flex-shrink: 0; font-weight: 600; font-size: 17px; color: #1a1a1a; display: flex; justify-content: space-between; align-items: center; }
+        .reset-btn { font-size: 14px; color: #ff3b30; border: none; background: none; cursor: pointer; }
+
+        /* 聊天区域 */
+        #chat-container { flex: 1; overflow-y: auto; padding: 20px 15px; padding-bottom: 100px; scroll-behavior: smooth; }
+        
+        .message { max-width: 90%; margin-bottom: 20px; padding: 16px; border-radius: 16px; font-size: 15px; line-height: 1.6; position: relative; word-wrap: break-word; box-shadow: 0 2px 8px rgba(0,0,0,0.05); page-break-inside: avoid; }
+        .ai-message { background: #fff; align-self: flex-start; border-top-left-radius: 4px; color: #2c3e50; }
+        .ai-message strong { color: #007aff; font-weight: 600; }
+        .user-message { background: #007aff; color: white; float: right; border-top-right-radius: 4px; box-shadow: 0 4px 12px rgba(0,122,255,0.2); }
+        .system-message { width: 100%; text-align: center; color: #999; font-size: 12px; margin: 10px 0; clear: both; }
+        .error-message { background: #fff1f0; border: 1px solid #ffa39e; color: #d63031; padding: 10px; border-radius: 8px; text-align: center; font-size: 14px; margin: 10px auto; width: 90%; clear: both; }
+        .clearfix { clear: both; }
+
+        /* 按钮与交互 */
+        .options-container { text-align: center; margin-top: 10px; margin-bottom: 30px; animation: fadeIn 0.5s; display: none; }
+        .option-btn { background: #fff; border: 1px solid #007aff; color: #007aff; padding: 8px 16px; border-radius: 20px; margin: 5px; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+        .option-btn:active { background: #007aff; color: white; }
+        .option-btn.quit { border-color: #ff3b30; color: #ff3b30; }
+        .retry-btn { background: #ff4d4f; color: white; border: none; padding: 6px 15px; border-radius: 15px; font-size: 13px; cursor: pointer; margin-top: 5px; }
+        
+        .action-bar { margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px; display: flex; justify-content: flex-end; }
+        .small-btn { font-size: 12px; color: #8e8e93; background: none; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 5px; }
+
+        /* 底部输入 */
+        .input-wrapper { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; border-top: 1px solid #e1e4e8; padding: 10px 15px; padding-bottom: max(15px, env(safe-area-inset-bottom)); z-index: 100; display: flex; align-items: flex-end; gap: 10px; }
+        #user-input { flex: 1; border: 1px solid #e1e4e8; border-radius: 24px; padding: 12px 18px; font-size: 16px; max-height: 120px; resize: none; background: #f9f9f9; outline: none; }
+        .circle-btn { width: 44px; height: 44px; border-radius: 50%; border: none; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; flex-shrink: 0; }
+        #voice-btn { background: #f0f2f5; color: #333; }
+        #voice-btn.listening { background: #ff3b30; color: white; animation: pulse 1.5s infinite; }
+        #send-btn { background: #007aff; color: white; }
+        #send-btn:disabled { background: #b4d5fe; }
+
+        /* 弹窗通用样式 */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px); display: none; }
+        .modal-card { background: white; padding: 30px; border-radius: 20px; width: 85%; max-width: 450px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.2); max-height: 80vh; overflow-y: auto; }
+        .modal-card input { width: 100%; padding: 14px; margin: 20px 0; border: 1px solid #eee; border-radius: 12px; background: #f9f9f9; font-size: 16px; }
+        .full-width-btn { width: 100%; padding: 12px; border-radius: 12px; font-size: 16px; border: none; margin-bottom: 10px; font-weight: 600; cursor: pointer; }
+        
+        /* 导出弹窗特定样式 */
+        #export-preview { text-align: left; background: #f4f4f4; padding: 10px; border-radius: 8px; font-size: 12px; color: #666; max-height: 150px; overflow-y: auto; margin: 15px 0; border: 1px solid #eee; }
+        
+        #loading-indicator { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 20px; border-radius: 30px; font-size: 13px; z-index: 900; display: none; display: flex; align-items: center; gap: 8px; }
+        
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 🖨️ 打印样式 (用于导出PDF) */
+        @media print {
+            body { background: white; height: auto; display: block; }
+            header, .input-wrapper, .options-container, .modal-overlay, #loading-indicator, .action-bar, .system-message, .error-message { display: none !important; }
+            #chat-container { overflow: visible; padding: 0; margin: 0; }
+            .message { box-shadow: none; border: 1px solid #eee; break-inside: avoid; max-width: 100%; margin-bottom: 10px; }
+            .user-message { background: #f0f8ff; color: #000; border-color: #b4d5fe; }
+            .ai-message { background: white; color: #000; }
+            /* 添加标题 */
+            #chat-container::before { content: "📋 AI 沟通训练复盘记录"; display: block; font-size: 20px; font-weight: bold; text-align: center; margin-bottom: 20px; margin-top: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Key 设置弹窗 -->
+    <div id="setup-modal" class="modal-overlay" style="display: flex;">
+        <div class="modal-card">
+            <h2>🚀 开启训练</h2>
+            <p style="color: #666; margin-top: 5px; font-size: 14px;">请输入 Google Gemini API Key</p>
+            <input type="password" id="api-key-input" placeholder="AIzaSy...">
+            <button class="full-width-btn" style="background:#007aff; color:white;" onclick="initSession()">开始</button>
+        </div>
+    </div>
+
+    <!-- 导出/结束 弹窗 -->
+    <div id="export-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h2>🏁 训练结束</h2>
+            <p style="color: #666; font-size: 14px;">太棒了！回顾一下本次的对话吧。</p>
+            
+            <div id="export-preview">
+                <!-- 预览内容填充处 -->
+            </div>
+
+            <button class="full-width-btn" style="background:#34c759; color:white;" onclick="exportTXT()">📄 导出为 TXT</button>
+            <button class="full-width-btn" style="background:#5856d6; color:white;" onclick="exportPDF()">🖨️ 导出 PDF (打印)</button>
+            <button class="full-width-btn" style="background:#ff3b30; color:white; margin-top: 10px;" onclick="confirmQuit()">👋 退出并清空</button>
+            <button class="full-width-btn" style="background:#f2f2f7; color:#007aff;" onclick="closeExportModal()">↩️ 返回继续聊</button>
+        </div>
+    </div>
+
+    <header>
+        <span>💬 全能沟通教练 Pro</span>
+        <button class="reset-btn" onclick="clearKey()">重置 Key</button>
+    </header>
+
+    <div id="loading-indicator">
+        <span>🤖 AI 思考中...</span>
+    </div>
+
+    <div id="chat-container">
+        <div class="message ai-message">
+            👋 嗨！我是你的专属沟通教练。<br>
+            我会通过 <strong>“模拟实战”</strong> 帮你提升沟通力。<br><br>
+            🎯 <strong>训练模式：</strong><br>
+            1. 我会随机出一个场景（职场/情感/社交）。<br>
+            2. 你用语音或文字回答。<br>
+            3. 我会给你 <strong>打分</strong>，拆解 <strong>回答思路</strong>，并提供 <strong>满分范例</strong>。<br><br>
+            准备好了吗？点击下方麦克风或直接输入，我们开始！
+        </div>
+        <div class="clearfix"></div>
+        
+        <div class="options-container" id="start-options" style="display: block;">
+            <button class="option-btn" onclick="sendCustomPrompt('请给我出一个职场沟通的题目')">🏢 职场场景</button>
+            <button class="option-btn" onclick="sendCustomPrompt('请给我出一个情侣/夫妻沟通的题目')">❤️ 情感场景</button>
+            <button class="option-btn" onclick="sendCustomPrompt('请给我出一个朋友/社交闲聊的题目')">🍻 社交场景</button>
+            <button class="option-btn" onclick="sendCustomPrompt('随机给我出一个高难度的沟通题目')">🎲 随机挑战</button>
+        </div>
+    </div>
+
+    <div class="input-wrapper">
+        <button id="voice-btn" class="circle-btn">🎤</button>
+        <textarea id="user-input" rows="1" placeholder="回答问题..."></textarea>
+        <button id="send-btn" class="circle-btn" onclick="handleUserSend()">➤</button>
+    </div>
+
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+
+        let chatSession;
+        let genAI;
+        let lastUserText = "";
+
+        const SYSTEM_INSTRUCTION = `
+        你现在是世界顶级的“沟通表达教练”。你的目标是训练用户的口才、情商和逻辑。
+        
+        【交互流程】
+        请严格遵守以下步骤循环：
+        1. **出题 (Scenario Generation)**: 
+           - 基于用户选择的类型，生成一个极其生活化、具体的棘手场景。
+           - 场景必须包含：【背景】、【对方的话/动作】、【你的目标】。
+           - *出题后，请停止输出，等待用户回答。*
+        2. **深度反馈 (Feedback & Coaching)**:
+           用户回答后，请按以下 Markdown 格式输出：
+           **🎯 综合评分：{0-100分}**
+           **❌ 存在的问题：** (一针见血地指出1-2个核心问题)
+           **💡 高手思路解析：** (详细解释针对这个问题，应该用什么策略。教用户“怎么想”。)
+           **✅ 满分范例库：**
+           1. **稳重得体型**：...
+           2. **高情商/幽默型**：...
+           3. **逻辑条理型**：...
+
+        【注意】
+        - 语气要像个严厉但负责的教练。
+        - 评分要客观。
+        `;
+
+        window.initSession = async function() {
+            const key = document.getElementById('api-key-input').value.trim();
+            if(!key) return alert("请输入 API Key");
+            localStorage.setItem('gemini_key', key);
+
+            try {
+                genAI = new GoogleGenerativeAI(key);
+                const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+                chatSession = model.startChat({
+                    history: [
+                        { role: "user", parts: [{ text: SYSTEM_INSTRUCTION }] },
+                        { role: "model", parts: [{ text: "明白，我准备好了。" }] } 
+                    ]
+                });
+                document.getElementById('setup-modal').style.display = 'none';
+            } catch (e) {
+                alert("Key 初始化失败");
+            }
+        };
+
+        window.onload = function() {
+            const savedKey = localStorage.getItem('gemini_key');
+            if(savedKey) {
+                document.getElementById('api-key-input').value = savedKey;
+                document.getElementById('setup-modal').style.display = 'none'; // 如果有key直接隐藏
+                if(!chatSession) document.getElementById('setup-modal').style.display = 'flex'; // 但如果没有session，还是得触发一下初始化逻辑(这里简单处理，让用户点一下)
+            }
+        }
+        
+        // 修正逻辑：如果已有 key，还是需要用户点击开始来触发 initSession，或者自动触发
+        // 为了简单，保持原样，用户看到填好的key点击开始即可。
+
+        window.clearKey = function() {
+            localStorage.removeItem('gemini_key');
+            location.reload();
+        }
+
+        window.sendCustomPrompt = async function(text) {
+            document.querySelectorAll('.options-container').forEach(el => el.style.display = 'none');
+            appendMessage('system', `正在生成 ${text.substring(5,9)} 场景...`);
+            await processAIResponse(text);
+        };
+
+        window.handleUserSend = function() {
+            const input = document.getElementById('user-input');
+            const text = input.value.trim();
+            if(!text) return;
+            appendMessage('user', text);
+            input.value = '';
+            input.style.height = 'auto';
+            document.querySelectorAll('.options-container').forEach(el => el.style.display = 'none');
+            processAIResponse(text);
+        };
+
+        async function processAIResponse(text) {
+            setLoading(true);
+            lastUserText = text;
+            try {
+                if(!chatSession) await initSession();
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 30000));
+                const result = await Promise.race([chatSession.sendMessage(text), timeoutPromise]);
+                appendMessage('ai', result.response.text());
+                showNextStepOptions();
+            } catch (e) {
+                showErrorUI(e.message === "Timeout" ? "请求超时" : "网络或Key错误");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function showNextStepOptions() {
+            const container = document.getElementById('chat-container');
+            const optionsDiv = document.createElement('div');
+            optionsDiv.className = 'options-container';
+            optionsDiv.style.display = 'block';
+            optionsDiv.innerHTML = `
+                <div style="font-size:12px; color:#999; margin-bottom:8px;">—— 下一步 ——</div>
+                <button class="option-btn" onclick="sendCustomPrompt('再给我出一个同类场景的题目')">🔄 同类场景</button>
+                <button class="option-btn" onclick="sendCustomPrompt('换一个完全不同的新场景')">✨ 换个新题</button>
+                <button class="option-btn quit" onclick="showExportModal()">🏁 结束训练</button>
+            `;
+            container.appendChild(optionsDiv);
+            container.scrollTo(0, container.scrollHeight);
+        }
+
+        function appendMessage(role, text) {
+            const container = document.getElementById('chat-container');
+            const div = document.createElement('div');
+            if (role === 'ai') {
+                div.innerHTML = `<div class="message ai-message">${marked.parse(text)}<div class="action-bar"><button class="small-btn" onclick="speakText(this)">🔈 朗读解析</button></div></div><div class="clearfix"></div>`;
+            } else if (role === 'system') {
+                div.className = 'system-message'; div.textContent = text;
+            } else {
+                div.innerHTML = `<div class="message user-message">${text}</div><div class="clearfix"></div>`;
+            }
+            container.appendChild(div);
+            container.scrollTo(0, container.scrollHeight);
+        }
+
+        // --- 导出与复盘逻辑 ---
+
+        // 1. 显示导出弹窗
+        window.showExportModal = function() {
+            const modal = document.getElementById('export-modal');
+            const preview = document.getElementById('export-preview');
+            
+            // 获取简单的纯文本预览
+            let summary = "";
+            document.querySelectorAll('.message').forEach(msg => {
+                let role = "🤖 教练";
+                if(msg.classList.contains('user-message')) role = "👤 我";
+                // 移除朗读按钮文本
+                let text = msg.innerText.replace('🔈 朗读解析', '').trim();
+                summary += `${role}: ${text.substring(0, 50)}...\n`;
+            });
+
+            preview.innerText = summary + "\n(......)";
+            modal.style.display = 'flex';
+        }
+
+        window.closeExportModal = function() {
+            document.getElementById('export-modal').style.display = 'none';
+        }
+
+        window.confirmQuit = function() {
+            location.reload();
+        }
+
+        // 2. 导出 TXT
+        window.exportTXT = function() {
+            let content = "=== AI 沟通训练复盘 ===\n\n";
+            document.querySelectorAll('.message').forEach(msg => {
+                let role = msg.classList.contains('user-message') ? "【我】" : "【AI 教练】";
+                let text = msg.innerText.replace('🔈 朗读解析', '').trim();
+                content += `${role}\n${text}\n\n-------------------\n\n`;
+            });
+
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `沟通训练复盘_${new Date().toLocaleDateString()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // 3. 导出 PDF (调用打印)
+        window.exportPDF = function() {
+            // 隐藏弹窗以便打印
+            document.getElementById('export-modal').style.display = 'none';
+            // 延迟一点点确保弹窗消失
+            setTimeout(() => {
+                window.print();
+                // 打印结束后(部分浏览器支持检测，但大部分不需要)重新显示弹窗或保持关闭
+            }, 300);
+        }
+
+        // --- 错误 UI ---
+        function showErrorUI(reason) {
+            const container = document.getElementById('chat-container');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.innerHTML = `⚠️ ${reason}<br><button class="retry-btn" onclick="retryLastMessage(this)">🔄 点击重试</button>`;
+            container.appendChild(errorDiv);
+            container.scrollTo(0, container.scrollHeight);
+        }
+
+        window.retryLastMessage = function(btnElement) {
+            if(btnElement && btnElement.parentElement) btnElement.parentElement.remove();
+            if(!lastUserText) return;
+            appendMessage('system', '🔄 正在重试...');
+            processAIResponse(lastUserText);
+        }
+
+        function setLoading(isLoading) {
+            document.getElementById('loading-indicator').style.display = isLoading ? 'flex' : 'none';
+            document.getElementById('send-btn').disabled = isLoading;
+        }
+
+        // --- 语音支持 ---
+        const voiceBtn = document.getElementById('voice-btn');
+        const inputField = document.getElementById('user-input');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'zh-CN'; recognition.continuous = false;
+            voiceBtn.onclick = () => voiceBtn.classList.contains('listening') ? recognition.stop() : recognition.start();
+            recognition.onstart = () => { voiceBtn.classList.add('listening'); inputField.placeholder = "正在听..."; };
+            recognition.onend = () => { 
+                voiceBtn.classList.remove('listening'); 
+                inputField.placeholder = "回答问题..."; 
+                if(inputField.value.trim().length > 0) setTimeout(handleUserSend, 500); 
+            };
+            recognition.onresult = (e) => inputField.value = e.results[0][0].transcript;
+        } else { voiceBtn.style.display = 'none'; }
+
+        window.speakText = function(btn) {
+            const text = btn.closest('.ai-message').innerText.replace('🔈 朗读解析', '');
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'zh-CN';
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utterance);
+        };
+        
+        inputField.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = (this.scrollHeight) + 'px'; });
+    </script>
+</body>
+</html>
